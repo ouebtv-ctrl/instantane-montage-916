@@ -1270,7 +1270,29 @@ output {
     if (state.isPlaying) return;
     const total = getTotalDuration();
     const stillTime = state.blocks.length && state.playOffset === 0 ? Math.min(0.75, Math.max(0, total - 0.01)) : state.playOffset;
-    drawFrame(clamp(stillTime, 0, Math.max(0, total - 0.01)));
+    const previewTime = clamp(stillTime, 0, Math.max(0, total - 0.01));
+    prepareStillVideoFrame(previewTime);
+    drawFrame(previewTime);
+  }
+
+  function prepareStillVideoFrame(globalTime) {
+    const found = findBlockAt(globalTime);
+    if (!found || found.block.type !== "video") return;
+    const { block, localTime } = found;
+    const video = block.video;
+    const target = clamp(block.start + localTime, 0, Math.max(0, block.naturalDuration - 0.05));
+    video.pause();
+    video.muted = true;
+    if (video.readyState < 1 || Math.abs(video.currentTime - target) < 0.08) return;
+    const drawWhenReady = () => {
+      if (!state.isPlaying) drawFrame(globalTime);
+    };
+    video.addEventListener("seeked", drawWhenReady, { once: true });
+    try {
+      video.currentTime = target;
+    } catch {
+      video.removeEventListener("seeked", drawWhenReady);
+    }
   }
 
   function drawFrame(globalTime) {
@@ -1707,7 +1729,7 @@ output {
     if (totalDuration > MAX_RECOMMENDED_SECONDS) warnings.push("Durée supérieure à 90 s conseillées sur iPhone.");
     if (totalBytes > RECOMMENDED_BYTES) warnings.push("Taille totale supérieure à 500 Mo.");
     if (state.settings.keepAudio && !state.settings.muteAll && state.blocks.some((block) => block.type === "video" && block.audioState === false)) {
-      warnings.push("Une séquence ne contient pas de piste audio détectable.");
+      warnings.push("Une séquence est déclarée muette par le navigateur.");
     }
     const mime = chooseMimeType();
     if (mime && !mime.includes("mp4")) warnings.push("MP4 non annoncé ici : export WebM probable.");
@@ -1806,7 +1828,7 @@ output {
   }
 
   function detectAudioState(video) {
-    if (video.audioTracks && typeof video.audioTracks.length === "number") return video.audioTracks.length > 0;
+    if (video.audioTracks && typeof video.audioTracks.length === "number" && video.audioTracks.length > 0) return true;
     if (typeof video.mozHasAudio === "boolean") return video.mozHasAudio;
     return null;
   }
