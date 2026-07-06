@@ -863,9 +863,21 @@ output {
     Promise.all([document.fonts?.ready ?? Promise.resolve(), waitForImage(logoImage)])
       .then(() => renderPreview())
       .catch(() => renderPreview());
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    handleServiceWorker();
+  }
+
+  function handleServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    const isGitHubPages = location.hostname.endsWith(".github.io");
+    if (isGitHubPages) {
+      navigator.serviceWorker.getRegistrations?.()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .then(() => window.caches?.keys?.())
+        .then((keys) => Promise.all((keys || []).filter((key) => key.startsWith("instantane-montage-916")).map((key) => caches.delete(key))))
+        .catch(() => {});
+      return;
     }
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
   }
 
   function bindProjectControls() {
